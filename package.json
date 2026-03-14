@@ -1,0 +1,14 @@
+{
+  "name": "claude-gather-town",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @theater/server\" \"npm run dev -w @theater/client\"",
+    "build": "npm run build -w @theater/shared && npm run build -w @theater/server && npm run build -w @theater/client",
+    "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Claude Gather.town</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎭</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100dvh;
+      position: fixed;
+      inset: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    #root {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    canvas {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a4e; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a6e; }
+    /* Focus styles */
+    input:focus { outline: none; }
+    button { font-family: inherit; }
+    /* Animations */
+    @keyframes questionFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes questionSlideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    (function() {
+      var shown = {};
+      function showToast(msg) {
+        var key = msg.slice(0, 80);
+        if (shown[key]) return;
+        shown[key] = true;
+        var el = document.createElement('div');
+        el.style.cssText = 'position:fixed;top:16px;right:16px;max-width:360px;padding:12px 16px;background:rgba(26,0,0,0.95);color:#ff8888;font-size:12px;z-index:9999;font-family:Inter,sans-serif;border-radius:8px;border:1px solid #3a1a1a;backdrop-filter:blur(8px);box-shadow:0 4px 16px rgba(0,0,0,0.4);animation:slideIn 0.3s ease;cursor:pointer;';
+        el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:14px">⚠️</span><strong style="color:#ff6666;font-size:11px">Something went wrong</strong></div><div style="color:#aa6666;font-size:11px;line-height:1.4;word-break:break-word">' + msg.slice(0, 120) + '</div>';
+        el.onclick = function() { el.remove(); delete shown[key]; };
+        document.body.appendChild(el);
+        setTimeout(function() { if (el.parentNode) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; setTimeout(function() { el.remove(); delete shown[key]; }, 300); } }, 6000);
+      }
+      window.onerror = function(msg) { showToast(String(msg)); };
+      window.addEventListener('unhandledrejection', function(e) { showToast(String(e.reason && e.reason.message || e.reason || 'Unknown error')); });
+    })();
+  </script>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
