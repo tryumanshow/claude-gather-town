@@ -24,7 +24,7 @@ All AI interactions — from intent classification to multi-agent orchestration 
 
 ## Execution Modes
 
-All three modes directly call the Claude Code SDK's [subagents and agent teams](https://docs.anthropic.com/en/docs/claude-code/agent-sdk#subagents-and-agent-teams) capabilities — the same multi-agent primitives available in the SDK.
+All three modes directly call the Claude Code SDK's [subagents and agent teams](https://code.claude.com/docs/en/agent-teams) capabilities — the same multi-agent primitives available in the SDK.
 
 ### Single
 
