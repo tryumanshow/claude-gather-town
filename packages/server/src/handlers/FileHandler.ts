@@ -1,6 +1,7 @@
 import { resolve } from 'path';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { WebSocket } from 'ws';
+import { toErrorMessage } from '@theater/shared';
 
 const extMap: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
@@ -20,19 +21,22 @@ export function handleFileList(ws: WebSocket, dirPath: string): void {
   } else try {
     const entries = readdirSync(resolvedDir, { withFileTypes: true })
       .filter(e => !e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== '__pycache__' && e.name !== 'dist' && e.name !== '.git')
-      .map(e => ({
-        name: e.name,
-        path: resolve(dirPath, e.name),
-        type: (e.isDirectory() ? 'directory' : 'file') as 'file' | 'directory',
-        size: e.isFile() ? statSync(resolve(dirPath, e.name)).size : undefined,
-      }))
+      .map(e => {
+        const fullPath = resolve(dirPath, e.name);
+        return {
+          name: e.name,
+          path: fullPath,
+          type: (e.isDirectory() ? 'directory' : 'file') as 'file' | 'directory',
+          size: e.isFile() ? statSync(fullPath).size : undefined,
+        };
+      })
       .sort((a, b) => {
         if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
     ws.send(JSON.stringify({ type: 'file:list:result', payload: { dirPath, entries } }));
   } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
+    const errMsg = toErrorMessage(err);
     ws.send(JSON.stringify({ type: 'file:list:result', payload: { dirPath, entries: [], error: errMsg } }));
   }
 }
@@ -50,7 +54,7 @@ export function handleFileRead(ws: WebSocket, rawFilePath: string): void {
       const language = extMap[ext] || extMap[baseName] || 'plaintext';
       ws.send(JSON.stringify({ type: 'file:read:result', payload: { filePath, content, language } }));
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = toErrorMessage(err);
       ws.send(JSON.stringify({ type: 'file:read:result', payload: { filePath, content: '', language: 'plaintext', error: errMsg } }));
     }
   }

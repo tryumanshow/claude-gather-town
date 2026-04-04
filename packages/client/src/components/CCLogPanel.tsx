@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { EventBus } from '../EventBus.ts';
 import { wsClient } from '../ws-client.ts';
-import { AGENT_ROSTER } from '@theater/shared';
+import { getRosterAgentByRosterId } from '@theater/shared';
 import type { AgentTextPayload, ToolUsePayload, AgentStatePayload, LogEventPayload } from '@theater/shared';
 
 export interface CCLogEntry {
@@ -14,13 +14,9 @@ export interface CCLogEntry {
   text: string;
 }
 
-const rosterMap = new Map(
-  AGENT_ROSTER.map(ra => [`roster-${ra.id}`, { name: ra.name, color: ra.color }])
-);
-
 function getAgentInfo(agentId: string): { name: string; color: string } {
-  const roster = rosterMap.get(agentId);
-  if (roster) return roster;
+  const roster = getRosterAgentByRosterId(agentId);
+  if (roster) return { name: roster.name, color: roster.color };
   if (agentId.startsWith('sub-')) return { name: agentId.replace('sub-', ''), color: '#e94560' };
   return { name: agentId, color: '#4A90D9' };
 }
@@ -159,11 +155,10 @@ export function CCLogPanel() {
             flexShrink: 0,
           }} />
           <span style={{
-            fontSize: '24px',
+            fontSize: '13px',
             fontWeight: 700,
             color: '#2ecc71',
             textTransform: 'uppercase',
-            letterSpacing: '1.5px',
             fontFamily: "'Courier New', monospace",
           }}>
             CC Execution Log
@@ -221,15 +216,22 @@ export function CCLogPanel() {
       >
         {entries.map(entry => {
           const style = getEntryStyle(entry);
+          const isAssistant = entry.type === 'assistant';
+          const isState = entry.type === 'state';
+          const isToolResult = entry.type === 'tool_result';
+          const entryPadding = isState ? '1px 12px 1px 8px' : '3px 12px 3px 8px';
+          const entryFontSize = isAssistant ? '15px' : (isState || isToolResult) ? '12px' : '14px';
+          const entryColor = isAssistant ? '#f0f0f0' : isState ? '#666' : isToolResult ? '#555' : style.color;
           return (
             <div key={entry.id} style={{
-              padding: '3px 12px 3px 8px',
+              padding: entryPadding,
               borderLeft: `3px solid ${style.borderColor}`,
               background: style.bg,
               marginBottom: '1px',
               display: 'flex',
               gap: '8px',
               alignItems: 'flex-start',
+              fontSize: entryFontSize,
             }}>
               {/* Timestamp */}
               <span style={{
@@ -282,7 +284,7 @@ export function CCLogPanel() {
 
               {/* Text */}
               <span style={{
-                color: style.color,
+                color: entryColor,
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 flex: 1,
@@ -299,12 +301,12 @@ export function CCLogPanel() {
             color: '#333',
             textAlign: 'center',
             padding: '40px 20px',
-            fontFamily: "'Courier New', monospace",
             fontSize: '13px',
           }}>
-            <div style={{ color: '#2ecc71', marginBottom: '8px' }}>$ awaiting input...</div>
+            <div style={{ fontSize: '20px', marginBottom: '8px' }}>🎭</div>
+            <div style={{ color: '#444', marginBottom: '4px' }}>실행 로그가 여기에 표시됩니다</div>
             <div style={{ fontSize: '11px', color: '#2a2a2a' }}>
-              Claude Code execution logs will appear here
+              에이전트가 작업을 시작하면 도구 사용, 상태 변화가 실시간으로 나타나요
             </div>
           </div>
         )}

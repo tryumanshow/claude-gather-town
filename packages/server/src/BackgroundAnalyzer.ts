@@ -1,4 +1,5 @@
-import { AGENT_ROSTER, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE } from '@theater/shared';
+import { createHash } from 'crypto';
+import { AGENT_ROSTER, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, getRosterAgent } from '@theater/shared';
 import type { ZoneName } from '@theater/shared';
 import { runSDKQuery } from './utils/sdkQueryHelper.js';
 
@@ -12,8 +13,25 @@ export interface DetectedSeat {
 type RawSeat = { rosterId: string; nx: number; ny: number; label: string };
 
 export class BackgroundAnalyzer {
-  async analyze(imageData: string, imageWidth: number, imageHeight: number, logFn?: (msg: string) => void): Promise<DetectedSeat[]> {
+  private imageCache: Map<string, DetectedSeat[]> = new Map();
+
+  async analyze(imageData: string, imageWidth: number, imageHeight: number, logFn?: (msg: string) => void, force?: boolean): Promise<DetectedSeat[]> {
     const log = logFn ?? ((msg: string) => console.log('[BackgroundAnalyzer]', msg));
+
+    // Fast hash: prefix + suffix + length (avoids hashing megabytes of base64)
+    const hash = createHash('md5')
+      .update(imageData.slice(0, 1024))
+      .update(imageData.slice(-512))
+      .update(String(imageData.length))
+      .digest('hex');
+
+    if (!force) {
+      const cached = this.imageCache.get(hash);
+      if (cached) {
+        log('Using cached analysis');
+        return cached;
+      }
+    }
 
     // Extract media type and base64 from data URL
     const match = imageData.match(/^data:(image\/\w+);base64,(.+)$/);
@@ -65,7 +83,13 @@ nx and ny are ratios 0.0–1.0 relative to total image width/height. ny=0 is top
 
     log('Analyzing image via Claude SDK...');
     const rawSeats = await this.analyzeViaSDK(base64Data, mediaType, analysisPrompt, log);
-    return this.convertSeats(rawSeats, log);
+    const result = this.convertSeats(rawSeats, log);
+    this.imageCache.set(hash, result);
+    return result;
+  }
+
+  clearCache(): void {
+    this.imageCache.clear();
   }
 
   private async analyzeViaSDK(
@@ -136,7 +160,7 @@ nx and ny are ratios 0.0–1.0 relative to total image width/height. ny=0 is top
     const worldH = MAP_HEIGHT * TILE_SIZE;
 
     const resolveRosterId = (s: RawSeat): string | null => {
-      if (AGENT_ROSTER.some(a => a.id === s.rosterId)) return s.rosterId;
+      if (getRosterAgent(s.rosterId)) return s.rosterId;
       const labelLower = (s.label || s.rosterId || '').toLowerCase();
       const byName = AGENT_ROSTER.find(a => labelLower.includes(a.name.toLowerCase()));
       if (byName) return byName.id;
@@ -163,7 +187,6 @@ nx and ny are ratios 0.0–1.0 relative to total image width/height. ny=0 is top
 
   /** Get zone name for a roster agent */
   getHomeZone(rosterId: string): ZoneName {
-    const agent = AGENT_ROSTER.find(a => a.id === rosterId);
-    return (agent?.homeZone ?? 'spawn') as ZoneName;
+    return (getRosterAgent(rosterId)?.homeZone ?? 'spawn') as ZoneName;
   }
 }

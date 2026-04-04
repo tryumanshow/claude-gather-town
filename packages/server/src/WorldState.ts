@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import type { AgentData, AgentType, ChatMessageData, SimMode, TaskData, ZoneName } from '@theater/shared';
-import { AGENT_COLORS, AGENT_NAMES, AGENT_ROSTER, ZONES, TILE_SIZE } from '@theater/shared';
+import { AGENT_COLORS, AGENT_NAMES, AGENT_ROSTER, ZONES, TILE_SIZE, toRosterId, getRosterAgentByRosterId } from '@theater/shared';
 import type { RosterAgent } from '@theater/shared';
 
 export class WorldState {
@@ -87,13 +87,12 @@ export class WorldState {
     return msg;
   }
 
-  // Morgan (CTO) is the team lead — no separate team-lead entity
-  static readonly TEAM_LEAD_ID = 'roster-morgan';
+  static readonly TEAM_LEAD_ID = toRosterId('morgan');
 
   /** Initialize persistent roster agents at their home zones */
   ensureRoster(): void {
     for (const ra of AGENT_ROSTER) {
-      const rosterId = `roster-${ra.id}`;
+      const rosterId = toRosterId(ra.id);
       if (this.rosterAgents.has(rosterId)) continue;
 
       // Use predefined seat positions (tile coords → pixel coords)
@@ -127,7 +126,7 @@ export class WorldState {
   returnRosterAgentHome(rosterId: string): void {
     const agent = this.rosterAgents.get(rosterId);
     if (!agent) return;
-    const ra = AGENT_ROSTER.find(r => `roster-${r.id}` === rosterId);
+    const ra = getRosterAgentByRosterId(rosterId);
     if (!ra) return;
 
     // Prefer bg-seats.json pixel position; fall back to tile-based if not loaded yet

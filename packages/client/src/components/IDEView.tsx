@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Editor from '@monaco-editor/react';
-import type { FileListResultPayload, FileReadResultPayload } from '@theater/shared';
+import type { FileListResultPayload, FileReadResultPayload, ToolUsePayload } from '@theater/shared';
 import { EventBus } from '../EventBus.ts';
+import { wsClient } from '../ws-client.ts';
 import { IDETerminal } from './IDETerminal.tsx';
 import { loadRecentRepos } from '../utils/repoStorage.ts';
 import { TreeNode, TreeNodeView, updateTreeNode } from './FileTree.tsx';
@@ -23,6 +24,8 @@ export function IDEView({ ws, repoPath, onOpenFolder }: Props) {
   const [folderInputOpen, setFolderInputOpen] = useState(false);
   const [folderInputValue, setFolderInputValue] = useState('');
   const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [activeToolFile, setActiveToolFile] = useState<{ tool: string; filePath: string } | null>(null);
+  const activeToolTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDraggingRef = useRef(false);
   const isDraggingTermRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -89,11 +92,29 @@ export function IDEView({ ws, repoPath, onOpenFolder }: Props) {
       });
     };
 
+    let lastAutoOpenPath = '';
+    const onAgentTool = (payload: ToolUsePayload) => {
+      const fileTools = ['Read', 'Edit', 'Write', 'MultiEdit'];
+      if (fileTools.includes(payload.tool) && payload.filePath) {
+        if (activeToolTimerRef.current) clearTimeout(activeToolTimerRef.current);
+        setActiveToolFile({ tool: payload.tool, filePath: payload.filePath });
+        activeToolTimerRef.current = setTimeout(() => setActiveToolFile(null), 4000);
+        // Deduplicate: skip if same file was just opened
+        if (payload.filePath !== lastAutoOpenPath) {
+          lastAutoOpenPath = payload.filePath;
+          wsClient.send({ type: 'file:read', payload: { filePath: payload.filePath } });
+        }
+      }
+    };
+
     EventBus.on('ws:file:list:result', onListResult);
     EventBus.on('ws:file:read:result', onReadResult);
+    EventBus.on('ws:agent:tool', onAgentTool);
     return () => {
       EventBus.off('ws:file:list:result', onListResult);
       EventBus.off('ws:file:read:result', onReadResult);
+      EventBus.off('ws:agent:tool', onAgentTool);
+      if (activeToolTimerRef.current) clearTimeout(activeToolTimerRef.current);
     };
   }, [repoPath]);
 
@@ -550,9 +571,28 @@ export function IDEView({ ws, repoPath, onOpenFolder }: Props) {
           color: '#fff',
           flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', gap: '16px' }}>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             {openFile && <span>{openFile.language}</span>}
             {loading && <span>Loading...</span>}
+            {activeToolFile && (
+              <span style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: 'rgba(255,255,255,0.15)',
+                borderRadius: '3px',
+                padding: '1px 7px',
+                fontSize: '10px',
+                fontWeight: 600,
+                animation: 'pulse 1.2s ease-in-out infinite',
+              }}>
+                <span style={{
+                  width: '6px', height: '6px', borderRadius: '50%',
+                  background: '#fff', display: 'inline-block', flexShrink: 0,
+                }} />
+                {activeToolFile.tool}: {activeToolFile.filePath.split('/').pop()}
+              </span>
+            )}
             {!terminalOpen && (
               <button
                 onClick={() => setTerminalOpen(true)}

@@ -2,7 +2,7 @@ import { resolve, dirname } from 'path';
 import { writeFileSync } from 'fs';
 import { WebSocket } from 'ws';
 import type { ServerMessage, ZoneName } from '@theater/shared';
-import { AGENT_ROSTER } from '@theater/shared';
+import { getRosterAgent, toRosterId } from '@theater/shared';
 import { saveSeatPositions, loadSeatPositions } from '../SeatStore.js';
 import type { DetectedSeat } from '../BackgroundAnalyzer.js';
 import type { BackgroundAnalyzer } from '../BackgroundAnalyzer.js';
@@ -10,15 +10,19 @@ import type { SimulationEngine } from '../SimulationEngine.js';
 
 let cachedSeatPositions = loadSeatPositions();
 
+/** Resolve zone name for a seat's roster agent */
+function seatZone(rosterId: string): ZoneName {
+  return (getRosterAgent(rosterId)?.homeZone ?? 'spawn') as ZoneName;
+}
+
 /** Apply saved seats to WorldState on startup (call once). */
 export function applySavedSeatsToWorld(simulation: SimulationEngine): void {
   const savedSeats = cachedSeatPositions;
   if (savedSeats && savedSeats.length > 0) {
     console.log(`Loaded ${savedSeats.length} saved seat positions`);
     for (const seat of savedSeats) {
-      const agentId = `roster-${seat.rosterId}`;
-      const ra = AGENT_ROSTER.find(a => a.id === seat.rosterId);
-      const zoneName = (ra?.homeZone ?? 'spawn') as ZoneName;
+      const agentId = toRosterId(seat.rosterId);
+      const zoneName = seatZone(seat.rosterId);
       simulation.world.updateAgent(agentId, { x: seat.worldX, y: seat.worldY, currentZone: zoneName });
       simulation.world.setHomeSeat(agentId, seat.worldX, seat.worldY);
     }
@@ -29,9 +33,8 @@ export function applySavedSeatsToWorld(simulation: SimulationEngine): void {
 export function sendSavedSeats(ws: WebSocket): void {
   if (cachedSeatPositions && cachedSeatPositions.length > 0) {
     for (const seat of cachedSeatPositions) {
-      const agentId = `roster-${seat.rosterId}`;
-      const ra = AGENT_ROSTER.find(a => a.id === seat.rosterId);
-      const zoneName = (ra?.homeZone ?? 'spawn') as ZoneName;
+      const agentId = toRosterId(seat.rosterId);
+      const zoneName = seatZone(seat.rosterId);
       ws.send(JSON.stringify({
         type: 'agent:move',
         payload: { agentId, targetX: seat.worldX, targetY: seat.worldY, targetZone: zoneName, path: [] },
@@ -67,9 +70,8 @@ export function handleBgAnalyze(
         payload: { timestamp: Date.now(), level: 'info', source: 'BackgroundAnalyzer', message: `Using ${cachedSeatPositions.length} saved seats (skipping re-analysis)` },
       });
       for (const seat of cachedSeatPositions) {
-        const agentId = `roster-${seat.rosterId}`;
-        const ra = AGENT_ROSTER.find(a => a.id === seat.rosterId);
-        const zoneName = (ra?.homeZone ?? 'spawn') as ZoneName;
+        const agentId = toRosterId(seat.rosterId);
+        const zoneName = seatZone(seat.rosterId);
         simulation.world.updateAgent(agentId, { x: seat.worldX, y: seat.worldY, currentZone: zoneName });
         broadcast({ type: 'agent:move', payload: { agentId, targetX: seat.worldX, targetY: seat.worldY, targetZone: zoneName, path: [] } });
       }
@@ -106,9 +108,8 @@ export function handleBgAnalyze(
     });
 
     for (const seat of seats) {
-      const agentId = `roster-${seat.rosterId}`;
-      const ra = AGENT_ROSTER.find(a => a.id === seat.rosterId);
-      const zoneName = (ra?.homeZone ?? 'spawn') as ZoneName;
+      const agentId = toRosterId(seat.rosterId);
+      const zoneName = seatZone(seat.rosterId);
 
       simulation.world.updateAgent(agentId, { x: seat.worldX, y: seat.worldY, currentZone: zoneName });
       simulation.world.setHomeSeat(agentId, seat.worldX, seat.worldY);

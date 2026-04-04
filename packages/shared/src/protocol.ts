@@ -56,6 +56,7 @@ export interface ToolUsePayload {
   description: string;
   duration: number;
   result?: string;
+  filePath?: string;
 }
 
 export interface AgentChatPayload {
@@ -143,6 +144,33 @@ export interface AuthStatusPayload {
   claudeInstalled?: boolean;
 }
 
+// === Agent-to-Agent Communication ===
+
+export interface AgentToAgentPayload {
+  fromAgentId: string;
+  toAgentId: string;
+  message: string;
+  /** Visual: sender walks to receiver's desk */
+  walkToDesk?: boolean;
+}
+
+// === Agent Performance Stats ===
+
+export interface AgentStatsPayload {
+  agents: AgentStatEntry[];
+}
+
+export interface AgentStatEntry {
+  agentId: string;
+  agentName: string;
+  color: string;
+  tasksCompleted: number;
+  tasksFailed: number;
+  toolUsage: Record<string, number>;
+  totalSessionTimeMs: number;
+  lastActiveAt?: number;
+}
+
 // === File Browser (IDE View) ===
 
 export interface FileEntry {
@@ -199,7 +227,9 @@ export type ServerMessage =
   | { type: 'file:list:result'; payload: FileListResultPayload }
   | { type: 'file:read:result'; payload: FileReadResultPayload }
   | { type: 'terminal:data'; payload: TerminalDataPayload }
-  | { type: 'terminal:exit'; payload: TerminalExitPayload };
+  | { type: 'terminal:exit'; payload: TerminalExitPayload }
+  | { type: 'agent:talk'; payload: AgentToAgentPayload }
+  | { type: 'stats:update'; payload: AgentStatsPayload };
 
 // === Client → Server Messages ===
 

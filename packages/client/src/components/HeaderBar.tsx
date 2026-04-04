@@ -85,8 +85,8 @@ export function HeaderBar({ viewMode, setViewMode, simStatus, connected, hasBgIm
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: '#666', fontSize: '11px' }}>MODE</span>
               <span style={{
-                color: '#e94560', fontWeight: 600, fontSize: '11px',
-                background: 'rgba(233,69,96,0.15)', padding: '2px 8px', borderRadius: '4px',
+                color: '#aaa', fontWeight: 600, fontSize: '11px',
+                background: '#2a2a4e', padding: '2px 8px', borderRadius: '4px',
               }}>{simStatus.mode || 'idle'}</span>
             </div>
 
@@ -119,8 +119,8 @@ export function HeaderBar({ viewMode, setViewMode, simStatus, connected, hasBgIm
             <button
               onClick={() => wsClient.send({ type: 'control', payload: { action: 'reset' } })}
               style={{
-                background: 'rgba(231,76,60,0.2)',
-                border: '1px solid #e74c3c60',
+                background: 'rgba(231,76,60,0.35)',
+                border: '1px solid #e74c3c90',
                 borderRadius: '4px',
                 color: '#e74c3c',
                 padding: '2px 10px',
@@ -137,9 +137,8 @@ export function HeaderBar({ viewMode, setViewMode, simStatus, connected, hasBgIm
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: '#666', fontSize: '11px' }}>AGENTS</span>
               <span style={{
-                color: simStatus.agentCount > 0 ? '#e94560' : '#ddd',
+                color: simStatus.agentCount > 0 ? '#4A90D9' : '#666',
                 fontWeight: 600, fontSize: '11px',
-                animation: simStatus.agentCount > 0 ? 'pulse 2s ease-in-out infinite' : undefined,
               }}>{simStatus.agentCount}</span>
             </div>
           </>

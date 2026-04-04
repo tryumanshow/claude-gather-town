@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useDraggableResize } from '../hooks/useDraggableResize.ts';
 import { EventBus } from '../EventBus.ts';
+import { isRosterId } from '@theater/shared';
 import type { AgentSpawnPayload, AgentStatePayload, AgentDespawnPayload, WorldSnapshotPayload, RosterInitPayload } from '@theater/shared';
 
 interface AgentInfo {
@@ -61,7 +62,7 @@ export function AgentStatus({ overlay = false }: Props) {
     };
 
     const onSpawn = (payload: AgentSpawnPayload) => {
-      if (payload.agentId.startsWith('roster-')) return;
+      if (isRosterId(payload.agentId)) return;
       setAgents(prev => {
         const next = new Map(prev);
         next.set(payload.agentId, {
@@ -94,7 +95,7 @@ export function AgentStatus({ overlay = false }: Props) {
     };
 
     const onDespawn = (payload: AgentDespawnPayload) => {
-      if (payload.agentId.startsWith('roster-')) return;
+      if (isRosterId(payload.agentId)) return;
       setAgents(prev => {
         const next = new Map(prev);
         next.delete(payload.agentId);
@@ -105,7 +106,7 @@ export function AgentStatus({ overlay = false }: Props) {
     const onSnapshot = (payload: WorldSnapshotPayload) => {
       const newAgents = new Map<string, AgentInfo>();
       for (const a of payload.agents) {
-        if (a.id.startsWith('roster-')) {
+        if (isRosterId(a.id)) {
           setRosterAgents(prev => {
             const next = new Map(prev);
             if (next.has(a.id)) {
@@ -143,7 +144,7 @@ export function AgentStatus({ overlay = false }: Props) {
   }, []);
 
   const rosterList = useMemo(() => Array.from(rosterAgents.values()), [rosterAgents]);
-  const agentList = useMemo(() => Array.from(agents.values()).filter(a => !a.id.startsWith('roster-') && a.id !== 'team-lead'), [agents]);
+  const agentList = useMemo(() => Array.from(agents.values()).filter(a => !isRosterId(a.id) && a.id !== 'team-lead'), [agents]);
 
   const totalCount = rosterList.length + agentList.length;
 
@@ -199,7 +200,7 @@ export function AgentStatus({ overlay = false }: Props) {
           <span style={{
             fontSize: '10px',
             fontWeight: 700,
-            color: '#e94560',
+            color: '#8899aa',
             textTransform: 'uppercase',
             letterSpacing: '1px',
           }}>
@@ -207,7 +208,7 @@ export function AgentStatus({ overlay = false }: Props) {
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{
-              background: totalCount > 0 ? '#e94560' : '#4A90D9',
+              background: '#4A90D9',
               color: '#fff',
               borderRadius: '10px',
               padding: '1px 8px',

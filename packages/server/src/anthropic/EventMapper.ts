@@ -188,9 +188,10 @@ export class EventMapper {
     else if (input.pattern) desc = `${toolName}: ${input.pattern}`;
     else if (input.query) desc = `${toolName}: ${String(input.query).slice(0, 50)}`;
 
+    const filePath = input.file_path ? String(input.file_path) : undefined;
     events.push({
       type: 'agent:tool',
-      payload: { agentId, tool: theaterTool, description: desc, duration: TIMING.TOOL_USE },
+      payload: { agentId, tool: theaterTool, description: desc, duration: TIMING.TOOL_USE, filePath },
     });
     events.push({
       type: 'agent:text',

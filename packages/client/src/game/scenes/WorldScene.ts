@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { EventBus } from '../../EventBus.ts';
-import { TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, ZONES, AGENT_ROSTER } from '@theater/shared';
+import { TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, ZONES, AGENT_ROSTER, fromRosterId } from '@theater/shared';
 import type {
   AgentSpawnPayload, AgentMovePayload, AgentStatePayload,
   AgentDespawnPayload, ToolUsePayload, AgentChatPayload,
@@ -850,7 +850,7 @@ export class WorldScene extends Phaser.Scene {
         this.rosterAgentIds.add(ra.id);
         if (!this.agents.has(ra.id)) {
           // Use seat coordinates from AGENT_ROSTER for precise chair placement
-          const rosterIdClean = ra.id.replace('roster-', '');
+          const rosterIdClean = fromRosterId(ra.id);
           const seat = seatMap.get(rosterIdClean);
           const x = seat ? seat.seatX * TILE_SIZE + TILE_SIZE / 2 : 500;
           const y = seat ? seat.seatY * TILE_SIZE + TILE_SIZE / 2 : 400;

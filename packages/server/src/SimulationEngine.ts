@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { WorldState } from './WorldState.js';
 import type { ParsedCommand } from './CommandParser.js';
 import type { ServerMessage, WorldSnapshotPayload, AgentType, ZoneName, AgentPermissionPayload } from '@theater/shared';
-import { TIMING, TILE_SIZE, ZONES, AGENT_ROSTER } from '@theater/shared';
+import { TIMING, TILE_SIZE, ZONES, AGENT_ROSTER, toRosterId, toErrorMessage } from '@theater/shared';
 import type { RosterInitPayload } from '@theater/shared';
 import { RealExecutionEngine, type RealExecutionConfig } from './RealExecutionEngine.js';
 
@@ -26,11 +26,9 @@ export class SimulationEngine extends EventEmitter {
   triggerCodebaseScan(): void {
     if (!this.realEngine) return;
     this.realEngine.runCodebaseScan(this).catch(err => {
-      this.log('error', 'SimulationEngine', `Codebase scan failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.log('error', 'SimulationEngine', `Codebase scan failed: ${toErrorMessage(err)}`);
     });
   }
-
-  // clearChatAgent removed — no persistent chat agent state
 
   /** Set or clear the permission handler for the real execution engine */
   setPermissionHandler(handler: ((req: AgentPermissionPayload) => Promise<boolean>) | undefined): void {
@@ -51,7 +49,7 @@ export class SimulationEngine extends EventEmitter {
   /** Generate roster:init message for new client connections */
   getRosterInit(): ServerMessage {
     const agents = AGENT_ROSTER.map(ra => ({
-      id: `roster-${ra.id}`,
+      id: toRosterId(ra.id),
       name: ra.name,
       role: ra.role,
       agentType: ra.agentType,
@@ -82,7 +80,7 @@ export class SimulationEngine extends EventEmitter {
       try {
         await this.realEngine.execute(command, this, this.playerPos);
       } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = toErrorMessage(err);
         if (errMsg === 'Cancelled') {
           this.log('info', 'SimulationEngine', 'Execution cancelled');
         } else {

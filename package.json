@@ -1,7 +1,9 @@
 {
   "name": "claude-gather-town",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently \"npm run dev -w @theater/server\" \"npm run dev -w @theater/client\"",
     "build": "npm run build -w @theater/shared && npm run build -w @theater/server && npm run build -w @theater/client",

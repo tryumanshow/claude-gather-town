@@ -1,11 +1,13 @@
 import type { ServerMessage, ZoneName, AgentPermissionPayload, AgentState } from '@theater/shared';
-import { AGENT_ROSTER, TIMING, getZoneCenter } from '@theater/shared';
+import { AGENT_ROSTER, TIMING, getZoneCenter, toRosterId, fromRosterId, isRosterId, getRosterAgent, toErrorMessage } from '@theater/shared';
+import { WorldState } from './WorldState.js';
 import type { ParsedCommand } from './CommandParser.js';
 import type { SimulationEngine } from './SimulationEngine.js';
 import { AgentSession } from './anthropic/AgentSession.js';
 import { pickAgentsForTask } from './roster/pickAgents.js';
 import { AwarenessManager } from './AwarenessManager.js';
 import { Brain } from './roster/Brain.js';
+import { TaskHistory } from './TaskHistory.js';
 
 export interface RealExecutionConfig {
   workingDirectory: string;
@@ -68,6 +70,7 @@ export class RealExecutionEngine {
   private activeSessions: Map<string, AgentSession> = new Map();
   private awarenessManager: AwarenessManager = new AwarenessManager();
   private brain: Brain = new Brain();
+  private taskHistory: TaskHistory;
   /** Track the last agent that interacted with the user (for conversation continuity) */
   private lastChatAgentId: string | null = null;
   /** SDK session IDs per agent — enables multi-turn conversation resume */
@@ -77,10 +80,12 @@ export class RealExecutionEngine {
 
   constructor(config: RealExecutionConfig) {
     this.config = config;
+    this.taskHistory = new TaskHistory(config.workingDirectory);
   }
 
   updateWorkingDirectory(path: string): void {
     this.config = { ...this.config, workingDirectory: path };
+    this.taskHistory.updateWorkingDirectory(path);
   }
 
   setPermissionHandler(handler: ((req: AgentPermissionPayload) => Promise<boolean>) | undefined): void {
@@ -107,8 +112,8 @@ export class RealExecutionEngine {
       this.lastChatAgentId ?? undefined,
     );
 
-    const mainRoster = AGENT_ROSTER.find(a => a.id === decision.agentId) ?? AGENT_ROSTER[0];
-    const agentId = `roster-${mainRoster.id}`;
+    const mainRoster = getRosterAgent(decision.agentId) ?? AGENT_ROSTER[0];
+    const agentId = toRosterId(mainRoster.id);
 
     simulation.log('info', 'Brain', `Intent: ${decision.intent} → ${mainRoster.name} (${mainRoster.role})`);
 
@@ -129,7 +134,7 @@ export class RealExecutionEngine {
       // Filter out Morgan — he's always the orchestrator, not a worker
       let picked = (decision.teamIds || [])
         .filter(id => id !== 'morgan')
-        .map(id => AGENT_ROSTER.find(r => r.id === id))
+        .map(id => getRosterAgent(id))
         .filter((r): r is NonNullable<typeof r> => r != null);
 
       if (picked.length === 0) {
@@ -137,12 +142,12 @@ export class RealExecutionEngine {
           .filter(r => r.id !== 'morgan');
       }
 
-      const morganRoster = AGENT_ROSTER.find(a => a.id === 'morgan')!;
+      const morganRoster = getRosterAgent('morgan')!;
       const allParticipants = [...picked, morganRoster];
       const seatPositions = this.captureSeatPositions(allParticipants, simulation);
 
       // Announce team
-      const morganId = 'roster-morgan';
+      const morganId = WorldState.TEAM_LEAD_ID;
       const names = picked.map(p => p.name).join(', ');
       const planText = decision.plan || `${mode === 'subagent' ? 'Distributing tasks to' : 'Assembling team:'} ${names}.`;
       this.emitNow(simulation, { type: 'agent:state', payload: { agentId: morganId, state: 'thinking', detail: 'Assembling team...' } });
@@ -242,6 +247,17 @@ export class RealExecutionEngine {
 
     // Done — announce completion and return to seat
     this.emitTaskEvent(simulation, taskId, command.description, 'completed', agentId, mainRoster);
+    const singleSummary = session.getLastAssistantText()?.slice(0, 200);
+    this.taskHistory.add({
+      id: taskId,
+      timestamp: Date.now(),
+      description: command.description,
+      agentId,
+      agentName: mainRoster.name,
+      mode: 'single',
+      status: 'completed',
+      summary: singleSummary,
+    });
     this.agentChat(agentId, 'Done! Task complete.', 2500, simulation, mainRoster.name);
     await this.delay(1500);
     await this.returnToSeatAndWait(agentId, targetX, targetY, seatPositions, simulation);
@@ -258,9 +274,9 @@ export class RealExecutionEngine {
     morgan: typeof AGENT_ROSTER[0],
     seatPositions: Map<string, { x: number; y: number; zone: ZoneName }>,
   ): Promise<void> {
-    const morganId = 'roster-morgan';
+    const morganId = WorldState.TEAM_LEAD_ID;
     const allAgents = [morgan, ...picked];
-    const allIds = allAgents.map(a => `roster-${a.id}`);
+    const allIds = allAgents.map(a => toRosterId(a.id));
     const meetingPos = this.getMeetingPosition(allAgents.length);
 
     // ── Phase 1: Quick Standup (brief huddle) ──
@@ -286,7 +302,7 @@ export class RealExecutionEngine {
     // Each agent responds briefly
     const shuffledStandup = [...STANDUP_POOL].sort(() => Math.random() - 0.5);
     for (let i = 0; i < Math.min(picked.length, 3); i++) {
-      const aid = `roster-${picked[i].id}`;
+      const aid = toRosterId(picked[i].id);
       this.agentChat(aid, shuffledStandup[i], 1500, simulation, picked[i].name);
       await this.delay(600);
     }
@@ -315,7 +331,7 @@ export class RealExecutionEngine {
     const descWithContext = this.buildWorkDescription(morganId, command.description);
     const session = this.createAgentSession(morganId, morgan, descWithContext, 'subagent', awarenessContext, fromScratch, { maxTurns: 100, enableRosterAgents: true });
 
-    const pickedIds = picked.map(p => `roster-${p.id}`);
+    const pickedIds = picked.map(p => toRosterId(p.id));
     await this.runAgentSession(session, morganId, simulation, pickedIds);
     this.mergeSpawnedAgents(session, picked, seatPositions, simulation);
     this.cleanupSpawnedAgents(session, simulation);
@@ -325,7 +341,7 @@ export class RealExecutionEngine {
     const morganSeat = seatPositions.get(morganId)!;
 
     for (const p of picked) {
-      const aid = `roster-${p.id}`;
+      const aid = toRosterId(p.id);
       const pSeat = seatPositions.get(aid)!;
 
       // Agent walks to Morgan's desk
@@ -353,6 +369,17 @@ export class RealExecutionEngine {
     // ── Done ──
     const doneText = 'Subagent mode complete! All reports received.';
     this.emitTaskEvent(simulation, taskId, command.description, 'completed', morganId, morgan, 'subagent');
+    const subagentSummary = session.getLastAssistantText()?.slice(0, 200);
+    this.taskHistory.add({
+      id: taskId,
+      timestamp: Date.now(),
+      description: command.description,
+      agentId: morganId,
+      agentName: morgan.name,
+      mode: 'subagent',
+      status: 'completed',
+      summary: subagentSummary,
+    });
     this.agentChat(morganId, doneText, 3000, simulation, morgan.name);
     await this.delay(2000);
     const morganSeatPos = seatPositions.get(morganId)!;
@@ -370,9 +397,9 @@ export class RealExecutionEngine {
     morgan: typeof AGENT_ROSTER[0],
     seatPositions: Map<string, { x: number; y: number; zone: ZoneName }>,
   ): Promise<void> {
-    const morganId = 'roster-morgan';
+    const morganId = WorldState.TEAM_LEAD_ID;
     const allAgents = [morgan, ...picked];
-    const allIds = allAgents.map(a => `roster-${a.id}`);
+    const allIds = allAgents.map(a => toRosterId(a.id));
     const meetingPos = this.getMeetingPosition(allAgents.length);
 
     // ── Phase 1: Full Meeting (formal gather + extended discussion) ──
@@ -404,7 +431,7 @@ export class RealExecutionEngine {
       const line = awareness.isEmpty
         ? FROM_SCRATCH_DISCUSSION_POOL[Math.floor(Math.random() * FROM_SCRATCH_DISCUSSION_POOL.length)]
         : shuffledDiscuss[i];
-      this.agentChat(`roster-${p.id}`, line, 2000, simulation, p.name);
+      this.agentChat(toRosterId(p.id), line, 2000, simulation, p.name);
     }
     await this.delay(TIMING.MEETING_DISCUSS);
 
@@ -422,16 +449,16 @@ export class RealExecutionEngine {
     // Track current positions for accurate distance calculation
     const currentPos = new Map<string, { x: number; y: number }>();
     for (const p of picked) {
-      const seat = seatPositions.get(`roster-${p.id}`)!;
-      currentPos.set(`roster-${p.id}`, { x: seat.x, y: seat.y });
+      const seat = seatPositions.get(toRosterId(p.id))!;
+      currentPos.set(toRosterId(p.id), { x: seat.x, y: seat.y });
     }
 
     if (picked.length >= 2) {
       for (let i = 0; i < picked.length - 1; i++) {
         const from = picked[i];
         const to = picked[i + 1];
-        const fromId = `roster-${from.id}`;
-        const toSeat = seatPositions.get(`roster-${to.id}`)!;
+        const fromId = toRosterId(from.id);
+        const toSeat = seatPositions.get(toRosterId(to.id))!;
         const fromPos = currentPos.get(fromId)!;
 
         // Walk from → to's desk
@@ -469,7 +496,7 @@ export class RealExecutionEngine {
     const descWithContext = this.buildWorkDescription(morganId, command.description);
     const session = this.createAgentSession(morganId, morgan, descWithContext, 'teams', awarenessContext, fromScratch, { maxTurns: 100, enableRosterAgents: true });
 
-    const pickedIdsTeams = picked.map(p => `roster-${p.id}`);
+    const pickedIdsTeams = picked.map(p => toRosterId(p.id));
     await this.runAgentSession(session, morganId, simulation, pickedIdsTeams);
     this.mergeSpawnedAgents(session, picked, seatPositions, simulation);
     this.cleanupSpawnedAgents(session, simulation);
@@ -477,7 +504,7 @@ export class RealExecutionEngine {
     // ── Phase 4: Final Wrap-up Meeting ──
     // Rebuild participant list (picked may have grown from SDK-spawned agents)
     const wrapAgents = [morgan, ...picked];
-    const wrapIds = wrapAgents.map(a => `roster-${a.id}`);
+    const wrapIds = wrapAgents.map(a => toRosterId(a.id));
 
     simulation.log('info', 'Teams', 'Final wrap-up meeting...');
     this.emitNow(simulation, {
@@ -506,6 +533,17 @@ export class RealExecutionEngine {
 
     const doneText = 'Teams mode complete! All tasks finished.';
     this.emitTaskEvent(simulation, taskId, command.description, 'completed', morganId, morgan, 'teams');
+    const teamsSummary = session.getLastAssistantText()?.slice(0, 200);
+    this.taskHistory.add({
+      id: taskId,
+      timestamp: Date.now(),
+      description: command.description,
+      agentId: morganId,
+      agentName: morgan.name,
+      mode: 'teams',
+      status: 'completed',
+      summary: teamsSummary,
+    });
     this.agentChat(morganId, doneText, 3000, simulation, morgan.name);
     await this.delay(1000);
 
@@ -535,7 +573,7 @@ export class RealExecutionEngine {
     );
 
     for (const { ra, result } of scanResults) {
-      const agentId = `roster-${ra.id}`;
+      const agentId = toRosterId(ra.id);
       if (!result.isEmpty) {
         this.emitNow(simulation, {
           type: 'agent:state',
@@ -582,14 +620,14 @@ export class RealExecutionEngine {
       // Record work result in Brain's conversation history for chat continuity
       const resultText = session.getLastAssistantText();
       if (resultText) {
-        const rosterId = agentId.replace('roster-', '');
-        const roster = AGENT_ROSTER.find(a => a.id === rosterId);
+        const rosterId = fromRosterId(agentId);
+        const roster = getRosterAgent(rosterId);
         if (roster) {
           this.brain.addAgentMessage(rosterId, roster.name, resultText.slice(0, 500));
         }
       }
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = toErrorMessage(err);
       simulation.log('error', 'RealExecutionEngine', `Session error [${agentId}]: ${errMsg}`);
       this.emitNow(simulation, { type: 'agent:state', payload: { agentId, state: 'failed', detail: errMsg } });
       // On error, clear the session ID so next attempt starts fresh
@@ -609,7 +647,7 @@ export class RealExecutionEngine {
     simulation: SimulationEngine,
   ): void {
     for (const subId of session.getSpawnedAgentIds()) {
-      if (!subId.startsWith('roster-')) {
+      if (!isRosterId(subId)) {
         this.emitNow(simulation, { type: 'agent:despawn', payload: { agentId: subId, reason: 'completed' } });
       }
       // Roster agents are NOT set to idle here — the flow's report/wrap-up phase handles them
@@ -639,15 +677,15 @@ export class RealExecutionEngine {
     simulation: SimulationEngine,
   ): void {
     const spawnedRosterIds = session.getSpawnedAgentIds()
-      .filter(id => id.startsWith('roster-'))
-      .map(id => id.replace('roster-', ''));
+      .filter(isRosterId)
+      .map(fromRosterId);
     for (const sid of spawnedRosterIds) {
       if (sid !== 'morgan' && !picked.some(p => p.id === sid)) {
-        const extra = AGENT_ROSTER.find(a => a.id === sid);
+        const extra = getRosterAgent(sid);
         if (extra) {
           picked.push(extra);
-          if (!seatPositions.has(`roster-${sid}`)) {
-            const aid = `roster-${sid}`;
+          if (!seatPositions.has(toRosterId(sid))) {
+            const aid = toRosterId(sid);
             const agentData = simulation.world.rosterAgents.get(aid);
             const fallback = getZoneCenter(extra.homeZone);
             seatPositions.set(aid, {
@@ -668,7 +706,7 @@ export class RealExecutionEngine {
   ): Map<string, { x: number; y: number; zone: ZoneName }> {
     const positions = new Map<string, { x: number; y: number; zone: ZoneName }>();
     for (const p of agents) {
-      const aid = `roster-${p.id}`;
+      const aid = toRosterId(p.id);
       const agentData = simulation.world.rosterAgents.get(aid);
       const fallback = getZoneCenter(p.homeZone);
       positions.set(aid, {
@@ -707,6 +745,11 @@ export class RealExecutionEngine {
   /** Stop active sessions but preserve conversation state (history, lastChatAgentId) */
   stopSessions(): void {
     this.cancelled = true;
+    for (const { timer, reject } of this._pendingTimers) {
+      clearTimeout(timer);
+      reject(new Error('Cancelled'));
+    }
+    this._pendingTimers.clear();
     for (const session of this.activeSessions.values()) {
       session.stop();
     }
@@ -752,20 +795,17 @@ export class RealExecutionEngine {
     if (logName) simulation.log('info', logName, text);
   }
 
+  private _pendingTimers = new Set<{ timer: ReturnType<typeof setTimeout>; reject: (err: Error) => void }>();
+
   private delay(ms: number): Promise<void> {
     if (this.cancelled) return Promise.reject(new Error('Cancelled'));
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, ms);
-      // Check cancellation periodically for long delays
-      const check = setInterval(() => {
-        if (this.cancelled) {
-          clearTimeout(timer);
-          clearInterval(check);
-          reject(new Error('Cancelled'));
-        }
-      }, 200);
-      // Clean up check interval when timer completes normally
-      setTimeout(() => clearInterval(check), ms + 10);
+      const timer = setTimeout(() => {
+        this._pendingTimers.delete(entry);
+        resolve();
+      }, ms);
+      const entry = { timer, reject };
+      this._pendingTimers.add(entry);
     });
   }
 
@@ -778,7 +818,7 @@ export class RealExecutionEngine {
   ): Promise<void> {
     let maxDist = 0;
     agents.forEach((p, i) => {
-      const aid = `roster-${p.id}`;
+      const aid = toRosterId(p.id);
       const spread = (i - agents.length / 2) * 40;
       const tx = meetingPos.x + spread;
       const ty = meetingPos.y;
@@ -798,7 +838,7 @@ export class RealExecutionEngine {
   ): Promise<void> {
     let maxDist = 0;
     for (const p of agents) {
-      const aid = `roster-${p.id}`;
+      const aid = toRosterId(p.id);
       const seat = seatPositions.get(aid)!;
       maxDist = Math.max(maxDist, this.dist(fromPos.x, fromPos.y, seat.x, seat.y));
       this.moveAgent(aid, seat.x, seat.y, seat.zone, simulation);
@@ -833,8 +873,9 @@ export class RealExecutionEngine {
   private buildWorkDescription(agentId: string, description: string): string {
     if (this.agentSessionIds.has(agentId)) return description;
     const history = this.brain.buildHistoryContext();
-    if (!history) return description;
-    return `${history}\n\nCurrent request: ${description}`;
+    const taskHistoryContext = this.taskHistory.buildContext();
+    if (!history && !taskHistoryContext) return description;
+    return `${history || ''}${taskHistoryContext}\n\nCurrent request: ${description}`;
   }
 
   /** Set all agents in list to a specific state */
@@ -847,7 +888,7 @@ export class RealExecutionEngine {
     for (const p of agents) {
       this.emitNow(simulation, {
         type: 'agent:state',
-        payload: { agentId: `roster-${p.id}`, state, ...(detail ? { detail } : {}) },
+        payload: { agentId: toRosterId(p.id), state, ...(detail ? { detail } : {}) },
       });
     }
   }

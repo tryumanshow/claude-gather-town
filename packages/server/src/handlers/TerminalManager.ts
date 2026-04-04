@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { WebSocket } from 'ws';
 import type { RepoManager } from '../RepoManager.js';
+import { toErrorMessage } from '@theater/shared';
 
 const activeTerminals = new Map<string, ChildProcess>();
 let terminalCounter = 0;
@@ -36,7 +37,7 @@ export function handleTerminalSpawn(ws: WebSocket, cwd: string | undefined, repo
     ws.send(JSON.stringify({ type: 'terminal:data', payload: { terminalId: id, data: '' } }));
     console.log(`[Terminal ${id}] spawned: bash -i in ${resolvedCwd}`);
   } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
+    const errMsg = toErrorMessage(err);
     console.error(`[Terminal] spawn failed:`, errMsg);
     ws.send(JSON.stringify({ type: 'terminal:exit', payload: { terminalId: id, exitCode: 1 } }));
   }

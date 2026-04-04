@@ -1,7 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import type { ServerMessage, AgentPermissionPayload } from '@theater/shared';
-import { AGENT_ROSTER } from '@theater/shared';
+import { AGENT_ROSTER, fromRosterId, toErrorMessage } from '@theater/shared';
 import { EventMapper } from './EventMapper.js';
 import { loadSkill } from '../skills/loader.js';
 
@@ -48,8 +48,13 @@ function buildToolDescription(tool: string, input: Record<string, unknown>): str
 }
 
 /** Build SDK AgentDefinition records from AGENT_ROSTER.
- *  Uses skill.md files as the prompt when available, falling back to inline systemPrompt. */
+ *  Uses skill.md files as the prompt when available, falling back to inline systemPrompt.
+ *  Results are cached per excludeId since AGENT_ROSTER is static. */
+const _rosterDefCache = new Map<string | undefined, Record<string, AgentDefinition>>();
 function buildRosterAgentDefinitions(excludeId?: string): Record<string, AgentDefinition> {
+  const cached = _rosterDefCache.get(excludeId);
+  if (cached) return cached;
+
   const agents: Record<string, AgentDefinition> = {};
 
   for (const ra of AGENT_ROSTER) {
@@ -66,6 +71,7 @@ function buildRosterAgentDefinitions(excludeId?: string): Record<string, AgentDe
     };
   }
 
+  _rosterDefCache.set(excludeId, agents);
   return agents;
 }
 
@@ -83,7 +89,7 @@ export class AgentSession {
 
   constructor(config: AgentSessionConfig) {
     this.config = config;
-    const mainRosterId = config.agentId.replace('roster-', '');
+    const mainRosterId = fromRosterId(config.agentId);
     const subRoster = AGENT_ROSTER.filter(ra => ra.id !== mainRosterId);
     this.eventMapper = new EventMapper(
       config.agentId,
@@ -144,7 +150,7 @@ Task: ${description}`;
 
     // If this is a roster agent, load skill.md first, fallback to inline systemPrompt
     if (rosterName) {
-      const agentRosterId = this.config.agentId.replace('roster-', '');
+      const agentRosterId = fromRosterId(this.config.agentId);
       const skillContent = loadSkill(agentRosterId);
       const skillSection = skillContent || rosterSystemPrompt || '';
       const skillsStr = rosterSkills?.join(', ') || '';
@@ -189,7 +195,7 @@ For casual conversation, respond naturally. For technical work requests, use too
       : undefined;
 
     // Build agents option: register roster agents as custom sub-agents
-    const mainRosterId = this.config.agentId.replace('roster-', '');
+    const mainRosterId = fromRosterId(this.config.agentId);
     const agents = this.config.enableRosterAgents
       ? buildRosterAgentDefinitions(mainRosterId)
       : undefined;
@@ -252,7 +258,7 @@ For casual conversation, respond naturally. For technical work requests, use too
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = toErrorMessage(err);
       const errorEvents = this.eventMapper.mapError(errMsg);
       for (const evt of errorEvents) yield evt;
     }

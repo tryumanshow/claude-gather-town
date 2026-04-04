@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { EventBus } from '../EventBus.ts';
+import { fromRosterId } from '@theater/shared';
 import type { TaskEventPayload, WorldSnapshotPayload, TaskData } from '@theater/shared';
 
 // Module-level components for stable references across renders
@@ -33,7 +34,7 @@ function TaskCard({ task, color }: { task: TaskData; color: string }) {
       )}
       {!task.ownerName && task.ownerId && (
         <div style={{ color: '#555', fontSize: '9px', marginTop: '2px' }}>
-          {task.ownerId.replace('roster-', '')}
+          {fromRosterId(task.ownerId)}
         </div>
       )}
     </div>
@@ -109,8 +110,10 @@ export function TaskBoard() {
         )}
       </div>
       {tasks.length === 0 ? (
-        <div style={{ color: '#555', fontSize: '11px', textAlign: 'center', padding: '12px 4px' }}>
-          No tasks yet — start a task to see progress here
+        <div style={{ color: '#444', fontSize: '11px', textAlign: 'center', padding: '16px 4px' }}>
+          <div style={{ fontSize: '16px', marginBottom: '6px' }}>☕</div>
+          <div style={{ color: '#555' }}>팀이 대기 중이에요</div>
+          <div style={{ color: '#3a3a3a', fontSize: '10px', marginTop: '4px' }}>아래에서 태스크를 입력하면 작업이 시작됩니다</div>
         </div>
       ) : (
         <div style={{ display: 'flex', gap: '8px' }}>

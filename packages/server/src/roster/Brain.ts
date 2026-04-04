@@ -99,6 +99,16 @@ JSON format:
   "plan": "work only: brief execution plan"
 }
 
+Examples:
+- "안녕!" → chat (greeting)
+- "승우 어딨어" → chat (asking about team member)
+- "뭐해?" → chat (casual)
+- "오늘 날씨 어때?" → chat (small talk)
+- "이 코드 리뷰해줘" → work
+- "버그 좀 고쳐" → work
+- "테스트 작성해줘" → work
+- "이 파일 읽어봐" → work
+
 Classification rules:
 - Greetings, small talk, emotions, general knowledge questions → "chat" (respond without tools)
 - Code writing/editing/analysis/debugging/file operations → "work"
@@ -172,6 +182,19 @@ Classification rules:
     const mode = explicitMode || 'single';
     const picked = pickAgentsForTask(userInput, mode) as RosterAgent[];
     const agentId = targetAgent || picked[0]?.id || 'morgan';
+
+    // Short inputs without work keywords are likely casual chat
+    const workKeywords = /코드|리뷰|작성|수정|고쳐|만들|구현|파일|테스트|디버그|분석|검색|찾아|빌드|배포|설치/;
+    const isLikelyChat = userInput.length < 15 && !workKeywords.test(userInput);
+
+    if (isLikelyChat) {
+      return {
+        intent: 'chat',
+        agentId,
+        mode: 'single',
+        response: '안녕하세요! 무엇을 도와드릴까요?',
+      };
+    }
 
     return {
       intent: 'work',

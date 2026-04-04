@@ -3,7 +3,7 @@
  * Extracted from EventMapper to separate message mapping from agent management.
  */
 import type { ServerMessage, ZoneName, AgentType } from '@theater/shared';
-import { getZoneCenter } from '@theater/shared';
+import { getZoneCenter, toRosterId } from '@theater/shared';
 import type { RosterAgent } from '@theater/shared';
 
 interface SubAgentInfo {
@@ -62,7 +62,7 @@ export class SubAgentTracker {
     // Look up the specific roster agent targeted by the Agent tool call
     const rosterAgent = this.findTargetRoster(toolUseId) || this.pickNextRoster();
     if (rosterAgent) {
-      const agentId = `roster-${rosterAgent.id}`;
+      const agentId = toRosterId(rosterAgent.id);
       const info: SubAgentInfo = {
         agentId, name: rosterAgent.name, color: rosterAgent.color,
         toolUseId, rosterId: rosterAgent.id, homeZone: rosterAgent.homeZone,
